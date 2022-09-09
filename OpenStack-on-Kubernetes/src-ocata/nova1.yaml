@@ -1,0 +1,125 @@
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: nova-server
+  labels:
+    app: nova-server
+spec:
+  serviceName: "nova-server"
+  #replicas: 3
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  #podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: nova-server
+  template:
+    metadata:
+      labels:
+        app: nova-server
+    spec:
+      terminationGracePeriodSeconds: 10
+      affinity:
+         podAntiAffinity:
+           requiredDuringSchedulingIgnoredDuringExecution:
+           - labelSelector:
+               matchExpressions:
+               - key: "app"
+                 operator: In
+                 values:
+                 - nova-server
+             topologyKey: "kubernetes.io/hostname"
+      nodeSelector:
+        controller: "true"
+      hostAliases:
+      - ip: "127.0.0.1"
+        hostnames:
+        - "nova-server"
+      #- ip: "192.168.0.150"
+      #  hostnames:
+      #  - "nfs-server"
+      containers:
+        - name: nova-server
+          image: call518/oaas-ocata:latest
+          #imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+            #capabilities:
+            #  add:
+            #  - CAP_SYS_ADMIN
+            #  - CAP_SYS_MODULE
+          env:
+            #- name: MY_POD_NAME
+            #  valueFrom:
+            #    fieldRef:
+            #      fieldPath: metadata.name
+            #- name: MY_POD_NAMESPACE
+            #  valueFrom:
+            #    fieldRef:
+            #      fieldPath: metadata.namespace
+            - name: MY_NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          envFrom:
+            - configMapRef:
+                name: env-common
+          command: ["/scripts/nova-server-init.sh"]
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                - /bin/sh
+                - -c
+                - >
+                  umount -a -t nfs;
+          ports:
+            - containerPort: 8774
+            - containerPort: 8778
+            - containerPort: 8775
+            - containerPort: 6080
+              #hostPort: 6080
+          volumeMounts:
+          - name: openstack-openrc
+            mountPath: /root/openrc
+          - name: nova-server-setup
+            mountPath: /scripts
+          #- name: kernel-modules
+          #  mountPath: /lib/modules
+          readinessProbe:
+            exec:
+              command:
+              - /check-init.sh
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            #timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 1
+          #livenessProbe:
+          #  exec:
+          #    command:
+          #    - /healthcheck.sh
+          #    - --liveness
+          ##livenessProbe:
+          ##  tcpSocket:
+          ##    port: 35357
+          ##  initialDelaySeconds: 5
+          ##  periodSeconds: 10
+      volumes:
+      - name: init-container-scripts
+        configMap:
+          name: init-container-scripts
+          defaultMode: 0755
+      - name: openstack-openrc
+        configMap:
+          name: openstack-openrc
+          defaultMode: 0755
+      - name: nova-server-setup
+        configMap:
+          name: nova-server-setup
+          defaultMode: 0755

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: glusterfs-cluster
+  namespace: openstack2
+subsets:
+- addresses:
+  - ip: 172.31.25.239
+  ports:
+  - port: 1
+- addresses:
+  - ip: 172.31.19.61
+  ports:
+  - port: 1

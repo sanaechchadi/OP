@@ -1,0 +1,95 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: openstack-server-pdb
+spec:
+  selector:
+    matchLabels:
+      app: openstack-server
+  minAvailable: 1
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: openstack
+  labels:
+    app: openstack
+spec:
+  ports:
+  - name: openstack-api
+    port: 80
+    targetPort: 80
+  #sessionAffinity: ClientIP
+  clusterIP: None
+  #type: NodePort # Or LoadBalancer in production w/ proper security
+  #type: LoadBalancer
+  selector:
+    app: openstack
+
+---
+
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: openstack
+  labels:
+    app: openstack
+spec:
+  serviceName: "openstack"
+  ## now, replicas must be "1", because of high load-average issue. (trying to solv).
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  #podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: openstack
+  template:
+    metadata:
+      labels:
+        app: openstack
+    spec:
+      terminationGracePeriodSeconds: 1
+      affinity:
+         podAntiAffinity:
+           requiredDuringSchedulingIgnoredDuringExecution:
+           - labelSelector:
+               matchExpressions:
+               - key: "app"
+                 operator: In
+                 values:
+                 - openstack
+             topologyKey: "kubernetes.io/hostname"
+      nodeSelector:
+        compute: "true"
+      containers:
+        - name: openstack-server
+          #image: ubuntu:20.04
+          image: docker-registry.default.svc:5000/os/openstack:5
+          #imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+              - ALL
+              - CAP_SYS_ADMIN
+              - CAP_SYS_MODULE
+              - CAP_NET_ADMIN
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          command: ["/scripts/openstack-init.sh"]
+          ports:
+            - containerPort: 80
+          volumeMounts:
+          - name: openstack-setup
+            mountPath: /scripts
+      volumes:
+      - name: openstack-setup
+        configMap:
+          name: openstack-setup
+          defaultMode: 0755

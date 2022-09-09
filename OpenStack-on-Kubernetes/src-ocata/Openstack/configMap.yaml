@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openstack-setup
+data:
+  openstack-init.sh: |
+    #!/bin/bash
+
+    set -e
+
+    apt update -y && apt upgrade -y
+    apt install git -y
+    git clone https://opendev.org/openstack/devstack.git -b stable/wallaby
+    cd devstack
+    cat << EOF > local.conf
+    [[local|localrc]]
+    ADMIN_PASSWORD=admin
+    DATABASE_PASSWORD=$ADMIN_PASSWORD
+    RABBIT_PASSWORD=$ADMIN_PASSWORD
+    SERVICE_PASSWORD=$ADMIN_PASSWORD
+    HOST_IP=$MY_POD_IP
+    EOF
+
+    ./stack.sh
+    echo "done";
